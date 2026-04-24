@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Live Class</title>
+<style>
+body{
+  background:#0f172a;
+  color:white;
+  text-align:center;
+}
+
+video{
+  width:250px;
+  margin:5px;
+  border-radius:10px;
+  border:2px solid white;
+}
+
+#videos{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+}
+
+#chatBox{
+  width:300px;
+  height:200px;
+  overflow:auto;
+  border:1px solid white;
+  margin:auto;
+}
+
+button{
+  margin:5px;
+  padding:8px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Live Class 🚀</h2>
+
+<div id="videos"></div>
+
+<!-- Controls -->
+<button onclick="toggleMic()">Mic</button>
+<button onclick="toggleCamera()">Camera</button>
+<button onclick="shareScreen()">Screen</button>
+
+<!-- Chat -->
+<h3>Chat 💬</h3>
+<div id="chatBox"></div>
+<input id="msg">
+<button onclick="sendMsg()">Send</button>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+
+const socket = io();
+const params = new URLSearchParams(location.search);
+const room = params.get("room");
+
+let peers = {};
+let localStream;
+
+async function init(){
+  localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+
+  addVideo("me", localStream);
+
+  socket.emit("join-room", room);
+
+  socket.on("user-joined", id => connectToNewUser(id));
+
+  socket.on("signal", handleSignal);
+
+  socket.on("chat", msg => {
+    chatBox.innerHTML += "<p>"+msg+"</p>";
+  });
+}
+
+function addVideo(id, stream){
+  let video = document.createElement("video");
+  video.srcObject = stream;
+  video.autoplay = true;
+  video.id = id;
+  videos.appendChild(video);
+}
+
+function createPeer(id){
+  let peer = new RTCPeerConnection();
+
+  localStream.getTracks().forEach(track=>{
+    peer.addTrack(track, localStream);
+  });
+
+  peer.ontrack = e=>{
+    addVideo(id, e.streams[0]);
+  };
+
+  peer.onicecandidate = e=>{
+    if(e.candidate){
+      socket.emit("signal",{id, candidate:e.candidate});
+    }
+  };
+
+  peers[id] = peer;
+  return peer;
+}
+
+async function connectToNewUser(id){
+  let peer = createPeer(id);
+
+  let offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+
+  socket.emit("signal",{id, sdp:peer.localDescription});
+}
+
+async function handleSignal(data){
+  let id = data.id;
+  if(!peers[id]) createPeer(id);
+
+  let peer = peers[id];
+
+  if(data.sdp){
+    await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+    if(data.sdp.type === "offer"){
+      let answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+
+      socket.emit("signal",{id, sdp:peer.localDescription});
+    }
+  }
+
+  if(data.candidate){
+    await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+  }
+}
+
+/* Controls */
+
+function toggleMic(){
+  localStream.getAudioTracks()[0].enabled = 
+  !localStream.getAudioTracks()[0].enabled;
+}
+
+function toggleCamera(){
+  localStream.getVideoTracks()[0].enabled = 
+  !localStream.getVideoTracks()[0].enabled;
+}
+
+async function shareScreen(){
+  let screen = await navigator.mediaDevices.getDisplayMedia({video:true});
+  let track = screen.getTracks()[0];
+
+  for(let id in peers){
+    let sender = peers[id].getSenders().find(s=>s.track.kind==="video");
+    sender.replaceTrack(track);
+  }
+}
+
+/* Chat */
+function sendMsg(){
+  socket.emit("chat", msg.value);
+  msg.value="";
+}
+
+init();
+
+</script>
+
+</body>
+  </html>
