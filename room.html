@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Join Class</title>
+<style>
+body{text-align:center;background:#111;color:white;}
+input,button{padding:10px;margin:10px;}
+</style>
+</head>
+<body>
+
+<h1>SRY Live Class 🎥</h1>
+
+<input id="room" placeholder="Room ID">
+<br>
+<button onclick="join()">Join Class</button>
+
+<script>
+function join(){
+  let room = document.getElementById("room").value;
+  window.location = "room.html?room=" + room;
+}
+</script>
+
+</body>
+</html>
